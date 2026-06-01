@@ -748,7 +748,24 @@ static int on_activity_state(const zmk_event_t *eh) {
     bool enable = state_ev->state == ZMK_ACTIVITY_ACTIVE ? 1 : 0;
     LOG_DBG("Change PMW3610 performance to %s", enable ? "active" : "inactive");
     for (size_t i = 0; i < ARRAY_SIZE(pmw3610_devs); i++) {
-        pmw3610_set_performance(pmw3610_devs[i], enable);
+        const struct device *dev = pmw3610_devs[i];
+        pmw3610_set_performance(dev, enable);
+        if (enable) {
+            // The sensor can come back from idle/sleep in a stuck state -- it
+            // streams constant huge deltas until the ball is physically moved,
+            // e.g. if its power rail was gated and it lost its configuration.
+            // Force a full re-init on wake (power-up reset, reload CPI/config,
+            // clear the motion registers) so it always resumes known-good.
+            // Mirrors pmw3610_resume()'s not-ready path; the IRQ is silenced
+            // here and re-enabled by pmw3610_async_init() once init completes.
+            struct pixart_data *data = dev->data;
+            pmw3610_set_interrupt(dev, false);
+            data->ready = false;
+            data->async_init_step = 0;
+            data->async_init_retry_count = 0;
+            k_work_schedule(&data->init_work,
+                            K_MSEC(async_init_delay[ASYNC_INIT_STEP_POWER_UP]));
+        }
     }
 
     return 0;
