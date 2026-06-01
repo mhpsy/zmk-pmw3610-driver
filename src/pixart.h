@@ -31,6 +31,12 @@ struct pixart_data {
     bool ready;  // whether init is finished successfully
     bool last_read_burst;
     int err;  // error code during async init
+
+    // Number of motion samples still to be dropped after the keyboard woke
+    // up. Avoids a spurious cursor jump from stale data latched in the sensor
+    // while idle/asleep. Set on the ACTIVE activity transition, decremented in
+    // the report path.
+    uint8_t wake_discard;
 };
 
 // device config data structure

@@ -431,6 +431,16 @@ static int pmw3610_report_data(const struct device *dev) {
     }
     // LOG_HEXDUMP_DBG(buf, sizeof(buf), "buf");
 
+    // Just woke up: the burst read above already cleared the sensor's motion
+    // latch, so drop this (potentially stale/garbage) sample instead of
+    // reporting it as a huge jump. See pixart_data.wake_discard.
+    if (data->wake_discard > 0) {
+        data->wake_discard--;
+        dx = 0;
+        dy = 0;
+        return 0;
+    }
+
 // 12-bit two's complement value to int16_t
 // adapted from https://stackoverflow.com/questions/70802306/convert-a-12-bit-signed-number-in-c
 #define TOINT16(val, bits) (((struct { int16_t value : bits; }){val}).value)
@@ -749,6 +759,12 @@ static int on_activity_state(const zmk_event_t *eh) {
     LOG_DBG("Change PMW3610 performance to %s", enable ? "active" : "inactive");
     for (size_t i = 0; i < ARRAY_SIZE(pmw3610_devs); i++) {
         pmw3610_set_performance(pmw3610_devs[i], enable);
+        if (enable) {
+            // Returning to active: arm the wake-up motion discard so the first
+            // sample(s) read after idle/sleep don't fling the cursor.
+            struct pixart_data *data = pmw3610_devs[i]->data;
+            data->wake_discard = CONFIG_PMW3610_WAKE_DISCARD_SAMPLES;
+        }
     }
 
     return 0;
