@@ -43,14 +43,14 @@ config PMW3610_REPORT_INTERVAL_MIN
 		Slow down input reporting for hid queue over the air.
 		Turn value down to 8ms to get sharp response if use with USB only.
 
-config PMW3610_MAX_DELTA
-  int "Drop single motion samples larger than this (counts, 0=off)"
-  default 600
+config PMW3610_INIT_SETTLE_SAMPLES
+  int "Motion samples to drop after each (re-)init"
+  default 2
   help
-    Sanity limit on a single motion sample. Any sample whose |dx| or |dy|
-    exceeds this is treated as a glitch (e.g. the stale/garbage frame the
-    sensor emits when waking from idle/sleep) and dropped. A real trackball
-    flick stays well below this at typical CPI, so normal motion is untouched.
+    After the sensor finishes (re-)initializing -- including the forced re-init
+    on wake -- drop this many motion samples before reporting. The first frames
+    after a power-up reset can carry stale/garbage deltas that would jump the
+    cursor; skipping them is deterministic and does not affect normal motion.
     Set to 0 to disable.
 
 config PMW3610_SMART_ALGORITHM

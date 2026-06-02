@@ -31,6 +31,10 @@ struct pixart_data {
     bool ready;  // whether init is finished successfully
     bool last_read_burst;
     int err;  // error code during async init
+
+    // Frames still to drop after a (re-)init so the sensor's first, possibly
+    // stale, post-power-up samples don't jump the cursor on wake.
+    uint8_t wake_discard;
 };
 
 // device config data structure

@@ -387,6 +387,9 @@ static void pmw3610_async_init(struct k_work *work) {
 
         if (next_step == ASYNC_INIT_STEP_COUNT) {
             data->ready = true;  // sensor is ready to work
+            // Arm the settle discard: skip the sensor's first post-power-up
+            // frames (they can be stale) before any motion is reported.
+            data->wake_discard = CONFIG_PMW3610_INIT_SETTLE_SAMPLES;
             LOG_INF("PMW3610 initialized");
             pmw3610_set_interrupt(dev, true);
         } else if (next_step < ASYNC_INIT_STEP_COUNT) {
@@ -431,6 +434,17 @@ static int pmw3610_report_data(const struct device *dev) {
     }
     // LOG_HEXDUMP_DBG(buf, sizeof(buf), "buf");
 
+    // Drop the first frame(s) right after a (re-)init: the sensor can latch a
+    // stale/garbage delta from power-up that would jump the cursor on wake. The
+    // burst read above already cleared the sensor's motion latch, so just skip
+    // these. Counter is armed in pmw3610_async_init() when the sensor is ready.
+    if (data->wake_discard > 0) {
+        data->wake_discard--;
+        dx = 0;
+        dy = 0;
+        return 0;
+    }
+
 // 12-bit two's complement value to int16_t
 // adapted from https://stackoverflow.com/questions/70802306/convert-a-12-bit-signed-number-in-c
 #define TOINT16(val, bits) (((struct { int16_t value : bits; }){val}).value)
@@ -449,19 +463,6 @@ static int pmw3610_report_data(const struct device *dev) {
 #endif
 #if IS_ENABLED(CONFIG_PMW3610_INVERT_Y)
     y = -y;
-#endif
-
-#if CONFIG_PMW3610_MAX_DELTA > 0
-    // Drop a single implausibly large sample. A real trackball flick stays well
-    // under a few hundred counts per sample at our CPI; a value this big is the
-    // stale/garbage frame the sensor emits on wake (it can sneak out in the tiny
-    // window before the ACTIVE re-init takes over). Dropping it stops the
-    // "cursor jumps to a weird spot on wake" without affecting normal motion.
-    if (x > CONFIG_PMW3610_MAX_DELTA || x < -CONFIG_PMW3610_MAX_DELTA ||
-        y > CONFIG_PMW3610_MAX_DELTA || y < -CONFIG_PMW3610_MAX_DELTA) {
-        LOG_WRN("Dropping implausible motion sample x=%d y=%d", x, y);
-        return 0;
-    }
 #endif
 
 #ifdef CONFIG_PMW3610_SMART_ALGORITHM
