@@ -451,6 +451,19 @@ static int pmw3610_report_data(const struct device *dev) {
     y = -y;
 #endif
 
+#if CONFIG_PMW3610_MAX_DELTA > 0
+    // Drop a single implausibly large sample. A real trackball flick stays well
+    // under a few hundred counts per sample at our CPI; a value this big is the
+    // stale/garbage frame the sensor emits on wake (it can sneak out in the tiny
+    // window before the ACTIVE re-init takes over). Dropping it stops the
+    // "cursor jumps to a weird spot on wake" without affecting normal motion.
+    if (x > CONFIG_PMW3610_MAX_DELTA || x < -CONFIG_PMW3610_MAX_DELTA ||
+        y > CONFIG_PMW3610_MAX_DELTA || y < -CONFIG_PMW3610_MAX_DELTA) {
+        LOG_WRN("Dropping implausible motion sample x=%d y=%d", x, y);
+        return 0;
+    }
+#endif
+
 #ifdef CONFIG_PMW3610_SMART_ALGORITHM
     int16_t shutter = ((int16_t)(buf[PMW3610_SHUTTER_H_POS] & 0x01) << 8) 
                     + buf[PMW3610_SHUTTER_L_POS];
