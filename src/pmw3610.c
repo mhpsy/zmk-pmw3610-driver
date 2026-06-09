@@ -760,26 +760,26 @@ static int on_activity_state(const zmk_event_t *eh) {
     }
 
     bool enable = state_ev->state == ZMK_ACTIVITY_ACTIVE ? 1 : 0;
-    LOG_DBG("Change PMW3610 performance to %s", enable ? "active" : "inactive");
+    LOG_DBG("PMW3610 activity %s", enable ? "active" : "inactive");
     for (size_t i = 0; i < ARRAY_SIZE(pmw3610_devs); i++) {
         const struct device *dev = pmw3610_devs[i];
-        pmw3610_set_performance(dev, enable);
         if (enable) {
-            // The sensor can come back from idle/sleep in a stuck state -- it
-            // streams constant huge deltas until the ball is physically moved,
-            // e.g. if its power rail was gated and it lost its configuration.
-            // Force a full re-init on wake (power-up reset, reload CPI/config,
-            // clear the motion registers) so it always resumes known-good.
-            // Mirrors pmw3610_resume()'s not-ready path; the IRQ is silenced
-            // here and re-enabled by pmw3610_async_init() once init completes.
-            struct pixart_data *data = dev->data;
-            pmw3610_set_interrupt(dev, false);
-            data->ready = false;
-            data->async_init_step = 0;
-            data->async_init_retry_count = 0;
-            k_work_schedule(&data->init_work,
-                            K_MSEC(async_init_delay[ASYNC_INIT_STEP_POWER_UP]));
+            // Keep the sensor force-awake on every wake, but DO NOT re-init it.
+            //
+            // The trackball sits on always-on power (the ext-power/VEXT gating
+            // only feeds the RGB underglow, not this sensor), so it never loses
+            // its configuration across an idle. We also no longer downshift it
+            // on idle (the else-less path below), so it never enters a rest
+            // mode -- and therefore never hits the PMW3610 rest-exit glitch that
+            // streams a stray delta. With no stuck state to recover from, the
+            // old wake re-init is unnecessary, and the re-init itself was what
+            // latched the one-off cursor "jump" when activity resumed (e.g. the
+            // first keypress after a pause, which is what wakes the central).
+            pmw3610_set_performance(dev, true);
         }
+        // On idle/sleep: intentionally do nothing. Leaving the sensor awake
+        // avoids the rest transition entirely; real deep-sleep power-down and
+        // its recovery are handled by pmw3610_pm_action()/pmw3610_resume().
     }
 
     return 0;
